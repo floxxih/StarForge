@@ -24,6 +24,9 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+    /// Contract operations (invoke, etc.)
+    #[command(subcommand)]
+    Contract(commands::contract::ContractCommands),
     /// Deploy a compiled Soroban contract (.wasm)
     Deploy(commands::deploy::DeployArgs),
     /// Show starforge config and environment info
@@ -40,6 +43,7 @@ fn main() {
     let result = match cli.command {
         Commands::Wallet(cmd)  => commands::wallet::handle(cmd),
         Commands::New(cmd)     => commands::new::handle(cmd),
+        Commands::Contract(cmd) => commands::contract::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info         => commands::info::handle(),
         Commands::Tx(args) => commands::tx::handle(args),
