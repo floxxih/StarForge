@@ -28,6 +28,9 @@ enum Commands {
     Deploy(commands::deploy::DeployArgs),
     /// Show starforge config and environment info
     Info,
+
+    Tx(commands::tx::TxArgs),   // fetch transaction for the account 
+    
 }
 
 fn main() {
@@ -39,6 +42,7 @@ fn main() {
         Commands::New(cmd)     => commands::new::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info         => commands::info::handle(),
+        Commands::Tx(args) => commands::tx::handle(args),
     };
 
     if let Err(e) = result {

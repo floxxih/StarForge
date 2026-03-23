@@ -51,3 +51,49 @@ pub fn check_network(network: &str) -> bool {
     let url = format!("{}/", horizon_url(network));
     ureq::get(&url).call().map(|r| r.status() == 200).unwrap_or(false)
 }
+
+#[derive(Debug, Deserialize)]
+pub struct TransactionRecord {
+    pub hash: String,
+    pub successful: bool,
+    pub operation_count: u32,
+    pub fee_charged: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TransactionsResponse {
+    #[serde(rename = "_embedded")]
+    embedded: TransactionsEmbedded,
+}
+
+#[derive(Debug, Deserialize)]
+struct TransactionsEmbedded {
+    records: Vec<TransactionRecord>,
+}
+
+pub fn fetch_transactions(
+    public_key: &str,
+    network: &str,
+    limit: u8,
+) -> Result<Vec<TransactionRecord>> {
+    let url = format!(
+        "{}/accounts/{}/transactions?order=desc&limit={}",
+        horizon_url(network),
+        public_key,
+        limit
+    );
+
+    let res = ureq::get(&url).call().with_context(|| {
+        format!(
+            "Account '{}' not found on {}. Has it been funded?",
+            public_key, network
+        )
+    })?;
+
+    let parsed: TransactionsResponse = res
+        .into_json()
+        .with_context(|| "Failed to parse transactions response")?;
+
+    Ok(parsed.embedded.records)
+}
