@@ -35,6 +35,11 @@ pub enum WalletCommands {
         /// Wallet name to remove
         name: String,
     },
+
+    Rename {
+        old_name: String,
+        new_name: String,
+    }
 }
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
@@ -44,6 +49,7 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
         WalletCommands::Show { name, reveal } => show(name, reveal),
         WalletCommands::Fund { name }         => fund_wallet(name),
         WalletCommands::Remove { name }       => remove(name),
+        WalletCommands::Rename { old_name, new_name } => rename(old_name, new_name),
     }
 }
 
@@ -230,5 +236,29 @@ fn remove(name: String) -> Result<()> {
 
     config::save(&cfg)?;
     p::success(&format!("Wallet '{}' removed", name));
+    Ok(())
+}
+
+
+fn rename(old_name: String, new_name: String) -> Result<()> {
+    let mut cfg = config::load()?;
+     if !cfg.wallets.iter().any(|w| w.name == old_name) {
+        anyhow::bail!("No wallet named '{}' found", old_name);
+    }
+
+     if cfg.wallets.iter().any(|w| w.name == new_name) {
+        anyhow::bail!("A wallet named '{}' already exists", new_name);
+    }
+    if let Some(w) = cfg.wallets.iter_mut().find(|w| w.name == old_name) {
+        w.name = new_name.clone();
+    }
+
+    config::save(&cfg)?;
+    println!();
+    p::success(&format!("Wallet renamed: '{}' → '{}'", old_name, new_name));
+    p::info(&format!(
+        "View it with: {}",
+        format!("starforge wallet show {}", new_name).cyan()
+    ));
     Ok(())
 }
