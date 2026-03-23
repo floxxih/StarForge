@@ -28,6 +28,9 @@ enum Commands {
     Deploy(commands::deploy::DeployArgs),
     /// Show starforge config and environment info
     Info,
+    /// Print shell completion scripts to stdout
+    #[command(subcommand)]
+    Completions(commands::completions::CompletionShell),
 }
 
 fn main() {
@@ -39,6 +42,7 @@ fn main() {
         Commands::New(cmd)     => commands::new::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info         => commands::info::handle(),
+        Commands::Completions(shell) => commands::completions::handle(shell),
     };
 
     if let Err(e) = result {

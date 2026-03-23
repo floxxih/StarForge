@@ -127,6 +127,21 @@ starforge deploy --wasm ./my_contract.wasm --yes
 starforge info
 ```
 
+### Shell completions
+
+```bash
+# Bash — add to ~/.bashrc
+source <(starforge completions bash)
+
+# Zsh — add to ~/.zshrc
+source <(starforge completions zsh)
+
+# Fish — save to fish completions directory
+starforge completions fish > ~/.config/fish/completions/starforge.fish
+```
+
+After adding the line to your shell config, restart your shell or run `source ~/.bashrc` / `source ~/.zshrc`. Tab-completion for all subcommands and flags will then be active.
+
 ---
 
 ## Project Structure
