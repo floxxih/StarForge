@@ -16,6 +16,9 @@ pub enum WalletCommands {
         /// Fund the wallet via Friendbot immediately (testnet only)
         #[arg(long, default_value = "false")]
         fund: bool,
+        /// Network to associate with this wallet (overrides global config)
+        #[arg(long, value_parser = ["testnet", "mainnet"])]
+        network: Option<String>,
     },
     /// List all saved wallets
     List,
@@ -46,8 +49,8 @@ pub enum WalletCommands {
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
     match cmd {
-        WalletCommands::Create { name, fund } => create(name, fund),
-        WalletCommands::List => list(),
+        WalletCommands::Create { name, fund, network } => create(name, fund, network),
+        WalletCommands::List                  => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
         WalletCommands::Fund { name } => fund_wallet(name),
         WalletCommands::Remove { name } => remove(name),
@@ -69,12 +72,14 @@ fn generate_keypair() -> (String, String) {
     (public_key, secret_key)
 }
 
-fn create(name: String, fund: bool) -> Result<()> {
+fn create(name: String, fund: bool, network_override: Option<String>) -> Result<()> {
     let mut cfg = config::load()?;
 
     if cfg.wallets.iter().any(|w| w.name == name) {
         anyhow::bail!("A wallet named '{}' already exists.", name);
     }
+
+    let network = network_override.unwrap_or_else(|| cfg.network.clone());
 
     let steps = if fund { 3 } else { 2 };
     p::header(&format!("Creating wallet '{}'", name));
@@ -91,14 +96,14 @@ fn create(name: String, fund: bool) -> Result<()> {
         name: name.clone(),
         public_key: public_key.clone(),
         secret_key: Some(secret_key),
-        network: cfg.network.clone(),
+        network: network.clone(),
         created_at: Utc::now().to_rfc3339(),
         funded: false,
     };
     cfg.wallets.push(wallet);
 
     if fund {
-        if cfg.network == "mainnet" {
+        if network == "mainnet" {
             p::warn("Friendbot is not available on Mainnet. Skipping fund step.");
         } else {
             p::step(3, steps, "Funding via Friendbot…");
