@@ -39,16 +39,16 @@ pub enum WalletCommands {
     Rename {
         old_name: String,
         new_name: String,
-    }
+    },
 }
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
     match cmd {
         WalletCommands::Create { name, fund } => create(name, fund),
-        WalletCommands::List                  => list(),
+        WalletCommands::List => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
-        WalletCommands::Fund { name }         => fund_wallet(name),
-        WalletCommands::Remove { name }       => remove(name),
+        WalletCommands::Fund { name } => fund_wallet(name),
+        WalletCommands::Remove { name } => remove(name),
         WalletCommands::Rename { old_name, new_name } => rename(old_name, new_name),
     }
 }
@@ -62,10 +62,18 @@ fn generate_keypair() -> (String, String) {
     rng.fill_bytes(&mut buf);
 
     let pub_key: String = std::iter::once('G')
-        .chain(buf[..55].iter().map(|b| alphabet[(b % 32) as usize] as char))
+        .chain(
+            buf[..55]
+                .iter()
+                .map(|b| alphabet[(b % 32) as usize] as char),
+        )
         .collect();
     let sec_key: String = std::iter::once('S')
-        .chain(buf[8..63].iter().map(|b| alphabet[(b % 32) as usize] as char))
+        .chain(
+            buf[8..63]
+                .iter()
+                .map(|b| alphabet[(b % 32) as usize] as char),
+        )
         .collect();
     (pub_key, sec_key)
 }
@@ -127,32 +135,41 @@ fn create(name: String, fund: bool) -> Result<()> {
 
 fn list() -> Result<()> {
     let cfg = config::load()?;
+
     p::header("Saved Wallets");
-    p::separator();
 
     if cfg.wallets.is_empty() {
-        p::info("No wallets yet. Run `starforge wallet create <name>` to get started.");
+        p::info(&format!(
+            "No wallets yet on {}. Run `starforge wallet create <name>` to get started.",
+            cfg.network
+        ));
         return Ok(());
     }
 
+    p::separator();
+
     for (i, w) in cfg.wallets.iter().enumerate() {
-        let tag = if w.funded {
-            " [funded]".green().to_string()
+        let status = if w.funded {
+            "funded".green()
         } else {
-            " [unfunded]".dimmed().to_string()
+            "unfunded".dimmed()
         };
-        println!("  {:>2}.  {}{}", i + 1, w.name.bright_white().bold(), tag);
-        println!("       {} {}", "Key:".dimmed(), w.public_key.cyan());
-        println!("       {} {}", "Net:".dimmed(), w.network.dimmed());
-        println!();
+
+        println!("  {:>2}. {} [{}]", i + 1, w.name.bold(), status);
+        p::kv("Key", &w.public_key);
+        p::kv("Net", &w.network);
+
+        if i < cfg.wallets.len() - 1 {
+            println!();
+        }
     }
 
     p::separator();
-    println!(
-        "  {} wallet(s) — {}",
-        cfg.wallets.len(),
-        config::config_path().display()
+    p::kv(
+        &format!("{} wallet(s)", cfg.wallets.len()),
+        &format!("on {} — {}", cfg.network, config::config_path().display()),
     );
+
     Ok(())
 }
 
@@ -173,12 +190,15 @@ fn show(name: String, reveal: bool) -> Result<()> {
             p::kv("Secret Key", sk);
         }
     } else {
-        p::kv("Secret Key", &format!("{} (--reveal to show)", "*".repeat(20)));
+        p::kv(
+            "Secret Key",
+            &format!("{} (--reveal to show)", "*".repeat(20)),
+        );
     }
 
-    p::kv("Network",  &w.network);
-    p::kv("Funded",   if w.funded { "yes" } else { "no" });
-    p::kv("Created",  &w.created_at);
+    p::kv("Network", &w.network);
+    p::kv("Funded", if w.funded { "yes" } else { "no" });
+    p::kv("Created", &w.created_at);
     p::separator();
 
     p::info(&format!("Fetching live balance on {}…", w.network));
@@ -239,14 +259,13 @@ fn remove(name: String) -> Result<()> {
     Ok(())
 }
 
-
 fn rename(old_name: String, new_name: String) -> Result<()> {
     let mut cfg = config::load()?;
-     if !cfg.wallets.iter().any(|w| w.name == old_name) {
+    if !cfg.wallets.iter().any(|w| w.name == old_name) {
         anyhow::bail!("No wallet named '{}' found", old_name);
     }
 
-     if cfg.wallets.iter().any(|w| w.name == new_name) {
+    if cfg.wallets.iter().any(|w| w.name == new_name) {
         anyhow::bail!("A wallet named '{}' already exists", new_name);
     }
     if let Some(w) = cfg.wallets.iter_mut().find(|w| w.name == old_name) {
