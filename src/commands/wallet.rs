@@ -131,32 +131,41 @@ fn create(name: String, fund: bool, network_override: Option<String>) -> Result<
 
 fn list() -> Result<()> {
     let cfg = config::load()?;
+
     p::header("Saved Wallets");
-    p::separator();
 
     if cfg.wallets.is_empty() {
-        p::info("No wallets yet. Run `starforge wallet create <name>` to get started.");
+        p::info(&format!(
+            "No wallets yet on {}. Run `starforge wallet create <name>` to get started.",
+            cfg.network
+        ));
         return Ok(());
     }
 
+    p::separator();
+
     for (i, w) in cfg.wallets.iter().enumerate() {
-        let tag = if w.funded {
-            " [funded]".green().to_string()
+        let status = if w.funded {
+            "funded".green()
         } else {
-            " [unfunded]".dimmed().to_string()
+            "unfunded".dimmed()
         };
-        println!("  {:>2}.  {}{}", i + 1, w.name.bright_white().bold(), tag);
-        println!("       {} {}", "Key:".dimmed(), w.public_key.cyan());
-        println!("       {} {}", "Net:".dimmed(), w.network.dimmed());
-        println!();
+
+        println!("  {:>2}. {} [{}]", i + 1, w.name.bold(), status);
+        p::kv("Key", &w.public_key);
+        p::kv("Net", &w.network);
+
+        if i < cfg.wallets.len() - 1 {
+            println!();
+        }
     }
 
     p::separator();
-    println!(
-        "  {} wallet(s) — {}",
-        cfg.wallets.len(),
-        config::config_path().display()
+    p::kv(
+        &format!("{} wallet(s)", cfg.wallets.len()),
+        &format!("on {} — {}", cfg.network, config::config_path().display()),
     );
+
     Ok(())
 }
 
