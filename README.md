@@ -121,11 +121,36 @@ starforge deploy \
 starforge deploy --wasm ./my_contract.wasm --yes
 ```
 
+### Contract commands
+
+```bash
+# Inspect a deployed contract instance
+starforge contract inspect CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6FNCI
+
+# Inspect on a specific network
+starforge contract inspect CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6FNCI --network mainnet
+```
+
 ### Environment info
 
 ```bash
 starforge info
 ```
+
+### Shell completions
+
+```bash
+# Bash — add to ~/.bashrc
+source <(starforge completions bash)
+
+# Zsh — add to ~/.zshrc
+source <(starforge completions zsh)
+
+# Fish — save to fish completions directory
+starforge completions fish > ~/.config/fish/completions/starforge.fish
+```
+
+After adding the line to your shell config, restart your shell or run `source ~/.bashrc` / `source ~/.zshrc`. Tab-completion for all subcommands and flags will then be active.
 
 ---
 
@@ -140,12 +165,14 @@ starforge/
     │   ├── mod.rs
     │   ├── wallet.rs            # wallet create/list/show/fund/remove
     │   ├── new.rs               # project scaffolding + templates
+    │   ├── contract.rs          # contract inspect + invoke
     │   ├── deploy.rs            # contract deployment
     │   └── info.rs              # environment info
     └── utils/
         ├── mod.rs
         ├── config.rs            # ~/.starforge/config.toml read/write
         ├── horizon.rs           # Horizon API + Friendbot HTTP calls
+        ├── soroban.rs           # Soroban RPC helpers
         └── print.rs             # Consistent CLI output helpers
 ```
 
@@ -217,13 +244,11 @@ Issues labeled `Stellar Wave` are available for contributors during an active sp
 
 - [ ] Add `starforge network switch <testnet|mainnet>` command to update global config
 - [ ] Add `starforge wallet export` to output a wallet's public key as a QR code in the terminal
-- [ ] Add `starforge contract inspect <contract-id>` to query Soroban contract storage
 - [ ] Encrypt secret keys at rest in config.toml using a user-provided passphrase
 - [ ] Add `starforge tx history <public-key>` to display recent transactions in the terminal
 
 ### 🔴 High
 
-- [ ] Implement real ed25519 Stellar keypair generation (replace mock generator)
 - [ ] Add `starforge contract invoke` to call a deployed Soroban contract function from the CLI
 - [ ] Add `starforge tx send` to build and submit a payment transaction
 - [ ] Add `starforge new contract` template generator — interactive prompts for custom contract scaffolding
@@ -234,7 +259,7 @@ Issues labeled `Stellar Wave` are available for contributors during an active sp
 ## Roadmap
 
 - **v0.1** — Wallet management, project scaffolding (4 templates), deploy flow ✅
-- **v0.2** — Real keypair generation, network switch command, contract inspect
+- **v0.2** — Network switch command, contract inspect, stronger wallet primitives
 - **v0.3** — Contract invocation, payment transactions, key encryption
 - **v1.0** — Full Soroban developer toolkit with interactive contract CLI
 

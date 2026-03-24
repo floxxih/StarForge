@@ -1,4 +1,4 @@
-use crate::utils::{config, soroban, print as p};
+use crate::utils::{config, print as p, soroban};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
@@ -7,6 +7,8 @@ use colored::*;
 pub enum ContractCommands {
     /// Invoke a deployed Soroban contract function
     Invoke(InvokeArgs),
+    /// Inspect a deployed Soroban contract instance
+    Inspect(InspectArgs),
 }
 
 #[derive(Args)]
@@ -32,10 +34,82 @@ pub struct InvokeArgs {
     pub submit: bool,
 }
 
+#[derive(Args)]
+pub struct InspectArgs {
+    /// Contract ID to inspect
+    pub contract_id: String,
+    /// Network to use; defaults to the global config network
+    #[arg(long, value_parser = ["testnet", "mainnet"])]
+    pub network: Option<String>,
+}
+
 pub fn handle(cmd: ContractCommands) -> Result<()> {
     match cmd {
         ContractCommands::Invoke(args) => handle_invoke(args),
+        ContractCommands::Inspect(args) => handle_inspect(args),
     }
+}
+
+fn handle_inspect(args: InspectArgs) -> Result<()> {
+    let network = resolve_network(args.network)?;
+
+    p::header("Inspect Soroban Contract");
+    p::separator();
+    p::kv("Contract ID", &args.contract_id);
+    p::kv("Network", &network);
+    p::separator();
+
+    println!();
+    p::step(1, 1, "Querying contract instance from Soroban RPC…");
+    let inspect = soroban::inspect_contract(&args.contract_id, &network)?;
+
+    println!();
+    p::kv_accent("Contract ID", &inspect.contract_id);
+    p::kv("Executable", &inspect.executable);
+    p::kv(
+        "WASM Hash",
+        inspect
+            .wasm_hash
+            .as_deref()
+            .unwrap_or("n/a (stellar asset contract)"),
+    );
+    p::kv("Storage Durability", &inspect.storage_durability);
+    p::kv("Ledger Sequence", &inspect.latest_ledger.to_string());
+
+    if let Some(last_modified) = inspect.last_modified_ledger_seq {
+        p::kv("Last Modified", &last_modified.to_string());
+    }
+
+    if let Some(live_until) = inspect.live_until_ledger_seq {
+        p::kv("Live Until", &live_until.to_string());
+    }
+
+    p::kv(
+        "Instance Storage",
+        &format!(
+            "{} entr{}",
+            inspect.instance_storage.len(),
+            if inspect.instance_storage.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            }
+        ),
+    );
+    p::separator();
+
+    if inspect.instance_storage.is_empty() {
+        p::info("No instance storage entries found.");
+    } else {
+        p::info("Instance storage:");
+        for (index, entry) in inspect.instance_storage.iter().enumerate() {
+            p::kv(&format!("  Key {}", index + 1), &entry.key);
+            p::kv(&format!("  Val {}", index + 1), &entry.value);
+        }
+    }
+
+    p::separator();
+    Ok(())
 }
 
 fn handle_invoke(args: InvokeArgs) -> Result<()> {
@@ -61,11 +135,14 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
     p::kv("Contract ID", &args.contract_id);
     p::kv("Function", &args.function);
     p::kv("Network", &args.network);
-    
+
     if !args.args.is_empty() {
         p::kv("Arguments", &format!("{} args", args.args.len()));
         for (i, (arg, arg_type)) in args.args.iter().zip(arg_types.iter()).enumerate() {
-            p::kv(&format!("  Arg {}", i + 1), &format!("{} ({})", arg, arg_type));
+            p::kv(
+                &format!("  Arg {}", i + 1),
+                &format!("{} ({})", arg, arg_type),
+            );
         }
     } else {
         p::kv("Arguments", "none");
@@ -82,7 +159,12 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
             cfg.wallets
                 .iter()
                 .find(|w| &w.name == wallet_name)
-                .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found. Run `starforge wallet list`", wallet_name))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Wallet '{}' not found. Run `starforge wallet list`",
+                        wallet_name
+                    )
+                })?
         } else if !cfg.wallets.is_empty() {
             p::info(&format!(
                 "No --wallet specified. Using: {}",
@@ -104,8 +186,12 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
 
     // Step 1: Simulate the transaction
     println!();
-    p::step(1, if args.submit { 2 } else { 1 }, "Simulating contract invocation…");
-    
+    p::step(
+        1,
+        if args.submit { 2 } else { 1 },
+        "Simulating contract invocation…",
+    );
+
     let simulation_result = soroban::simulate_transaction(
         &args.contract_id,
         &args.function,
@@ -117,10 +203,16 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
     p::kv_accent("Simulation", "✓ Success");
     p::kv("Return Value", &simulation_result.return_value);
     p::kv("Fee (stroops)", &simulation_result.fee.to_string());
-    p::kv("Fee (XLM)", &format!("{:.7}", simulation_result.fee as f64 / 10_000_000.0));
+    p::kv(
+        "Fee (XLM)",
+        &format!("{:.7}", simulation_result.fee as f64 / 10_000_000.0),
+    );
 
     if !simulation_result.events.is_empty() {
-        p::kv("Events", &format!("{} emitted", simulation_result.events.len()));
+        p::kv(
+            "Events",
+            &format!("{} emitted", simulation_result.events.len()),
+        );
         for (i, event) in simulation_result.events.iter().enumerate() {
             p::kv(&format!("  Event {}", i + 1), event);
         }
@@ -131,7 +223,7 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
         if let Some(wallet) = wallet {
             println!();
             p::step(2, 2, "Submitting transaction…");
-            
+
             let tx_result = soroban::submit_transaction(
                 &args.contract_id,
                 &args.function,
@@ -152,4 +244,15 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
 
     p::separator();
     Ok(())
+}
+
+fn resolve_network(network_override: Option<String>) -> Result<String> {
+    let network = network_override.unwrap_or(config::load()?.network);
+    match network.as_str() {
+        "testnet" | "mainnet" => Ok(network),
+        _ => anyhow::bail!(
+            "Unsupported network '{}'. Use 'testnet' or 'mainnet'.",
+            network
+        ),
+    }
 }

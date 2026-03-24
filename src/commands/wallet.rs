@@ -3,7 +3,9 @@ use anyhow::Result;
 use chrono::Utc;
 use clap::Subcommand;
 use colored::*;
+use ed25519_dalek::SigningKey;
 use rand::RngCore;
+use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
 
 #[derive(Subcommand)]
 pub enum WalletCommands {
@@ -14,6 +16,9 @@ pub enum WalletCommands {
         /// Fund the wallet via Friendbot immediately (testnet only)
         #[arg(long, default_value = "false")]
         fund: bool,
+        /// Network to associate with this wallet (overrides global config)
+        #[arg(long, value_parser = ["testnet", "mainnet"])]
+        network: Option<String>,
     },
     /// List all saved wallets
     List,
@@ -44,8 +49,8 @@ pub enum WalletCommands {
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
     match cmd {
-        WalletCommands::Create { name, fund } => create(name, fund),
-        WalletCommands::List => list(),
+        WalletCommands::Create { name, fund, network } => create(name, fund, network),
+        WalletCommands::List                  => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
         WalletCommands::Fund { name } => fund_wallet(name),
         WalletCommands::Remove { name } => remove(name),
@@ -53,37 +58,28 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
     }
 }
 
-/// Generate a mock Stellar-style keypair for the MVP scaffold.
-/// A full implementation replaces this with real ed25519 key derivation.
 fn generate_keypair() -> (String, String) {
-    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     let mut rng = rand::thread_rng();
-    let mut buf = [0u8; 64];
-    rng.fill_bytes(&mut buf);
+    let mut seed = [0u8; 32];
+    rng.fill_bytes(&mut seed);
 
-    let pub_key: String = std::iter::once('G')
-        .chain(
-            buf[..55]
-                .iter()
-                .map(|b| alphabet[(b % 32) as usize] as char),
-        )
-        .collect();
-    let sec_key: String = std::iter::once('S')
-        .chain(
-            buf[8..63]
-                .iter()
-                .map(|b| alphabet[(b % 32) as usize] as char),
-        )
-        .collect();
-    (pub_key, sec_key)
+    let signing_key = SigningKey::from_bytes(&seed);
+    let verifying_key = signing_key.verifying_key();
+
+    let public_key = StellarPublicKey(verifying_key.to_bytes()).to_string();
+    let secret_key = StellarPrivateKey(seed).to_string();
+
+    (public_key, secret_key)
 }
 
-fn create(name: String, fund: bool) -> Result<()> {
+fn create(name: String, fund: bool, network_override: Option<String>) -> Result<()> {
     let mut cfg = config::load()?;
 
     if cfg.wallets.iter().any(|w| w.name == name) {
         anyhow::bail!("A wallet named '{}' already exists.", name);
     }
+
+    let network = network_override.unwrap_or_else(|| cfg.network.clone());
 
     let steps = if fund { 3 } else { 2 };
     p::header(&format!("Creating wallet '{}'", name));
@@ -100,14 +96,14 @@ fn create(name: String, fund: bool) -> Result<()> {
         name: name.clone(),
         public_key: public_key.clone(),
         secret_key: Some(secret_key),
-        network: cfg.network.clone(),
+        network: network.clone(),
         created_at: Utc::now().to_rfc3339(),
         funded: false,
     };
     cfg.wallets.push(wallet);
 
     if fund {
-        if cfg.network == "mainnet" {
+        if network == "mainnet" {
             p::warn("Friendbot is not available on Mainnet. Skipping fund step.");
         } else {
             p::step(3, steps, "Funding via Friendbot…");
@@ -258,7 +254,6 @@ fn remove(name: String) -> Result<()> {
     p::success(&format!("Wallet '{}' removed", name));
     Ok(())
 }
-
 fn rename(old_name: String, new_name: String) -> Result<()> {
     let mut cfg = config::load()?;
     if !cfg.wallets.iter().any(|w| w.name == old_name) {
@@ -280,4 +275,42 @@ fn rename(old_name: String, new_name: String) -> Result<()> {
         format!("starforge wallet show {}", new_name).cyan()
     ));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_keypair;
+    use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+    use std::collections::HashSet;
+    use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
+
+    #[test]
+    fn generates_valid_unique_stellar_ed25519_keypairs() {
+        let mut public_keys = HashSet::new();
+        let mut secret_keys = HashSet::new();
+        let message = b"starforge wallet keypair validation";
+
+        for _ in 0..1000 {
+            let (public_key, secret_key) = generate_keypair();
+
+            assert!(public_key.starts_with('G'));
+            assert!(secret_key.starts_with('S'));
+            assert!(public_keys.insert(public_key.clone()));
+            assert!(secret_keys.insert(secret_key.clone()));
+
+            let decoded_public = StellarPublicKey::from_string(&public_key).unwrap();
+            let decoded_secret = StellarPrivateKey::from_string(&secret_key).unwrap();
+
+            assert_eq!(decoded_public.to_string(), public_key);
+            assert_eq!(decoded_secret.to_string(), secret_key);
+
+            let signing_key = SigningKey::from_bytes(&decoded_secret.0);
+            let verifying_key = VerifyingKey::from_bytes(&decoded_public.0).unwrap();
+
+            assert_eq!(signing_key.verifying_key().to_bytes(), decoded_public.0);
+
+            let signature = signing_key.sign(message);
+            verifying_key.verify(message, &signature).unwrap();
+        }
+    }
 }
