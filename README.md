@@ -223,7 +223,6 @@ Issues labeled `Stellar Wave` are available for contributors during an active sp
 
 ### 🔴 High
 
-- [ ] Implement real ed25519 Stellar keypair generation (replace mock generator)
 - [ ] Add `starforge contract invoke` to call a deployed Soroban contract function from the CLI
 - [ ] Add `starforge tx send` to build and submit a payment transaction
 - [ ] Add `starforge new contract` template generator — interactive prompts for custom contract scaffolding
@@ -234,7 +233,7 @@ Issues labeled `Stellar Wave` are available for contributors during an active sp
 ## Roadmap
 
 - **v0.1** — Wallet management, project scaffolding (4 templates), deploy flow ✅
-- **v0.2** — Real keypair generation, network switch command, contract inspect
+- **v0.2** — Network switch command, contract inspect, stronger wallet primitives
 - **v0.3** — Contract invocation, payment transactions, key encryption
 - **v1.0** — Full Soroban developer toolkit with interactive contract CLI
 
