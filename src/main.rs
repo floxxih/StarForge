@@ -14,6 +14,10 @@ use colored::*;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Suppress the ASCII banner and decorative output
+    #[arg(long, short = 'q', global = true)]
+    quiet: bool,
 }
 
 #[derive(Subcommand)]
@@ -32,13 +36,19 @@ enum Commands {
     /// Show starforge config and environment info
     Info,
 
-    Tx(commands::tx::TxArgs),   // fetch transaction for the account 
-    
+    Tx(commands::tx::TxArgs),   // fetch transaction for the account
+
+    /// View or switch the active network (testnet/mainnet)
+    #[command(subcommand)]
+    Network(commands::network::NetworkCommands),
 }
 
 fn main() {
-    print_banner();
     let cli = Cli::parse();
+
+    if !cli.quiet {
+        print_banner();
+    }
 
     let result = match cli.command {
         Commands::Wallet(cmd)  => commands::wallet::handle(cmd),
@@ -47,6 +57,7 @@ fn main() {
         Commands::Deploy(args) => commands::deploy::handle(args),
         Commands::Info         => commands::info::handle(),
         Commands::Tx(args) => commands::tx::handle(args),
+        Commands::Network(cmd) => commands::network::handle(cmd),
     };
 
     if let Err(e) = result {
