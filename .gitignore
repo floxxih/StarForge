@@ -1,1 +1,181 @@
-target/
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.profraw
+
+# Dependency directories
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Starforge specific
+.starforge/
+config.toml
+*.wasm
+.soroban/
+
+# Test artifacts
+test-output/
+test-results/
+*.test
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Profiling
+*.prof
+*.pprof
+*.perf
+
+# Debug files
+*.debug
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Local configuration
+local.toml
+dev.toml
+secrets.toml
+
+# Build scripts
+build.sh
+deploy.sh
+install.sh
+
+# Documentation build
+docs/build/
+book/
+*.md.bak
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# Generated files
+generated/
+dist/
+build/
+out/
+
+# Rust analyzer
+.rust-analyzer/
+target/debug/incremental/
+
+# Clippy
+.clippy.toml.local
+
+# Rustfmt
+.rustfmt.toml.local
+
+# Cargo
+.cargo/
+Cargo.toml.local
+
+# GitHub Actions
+.github/workflows/local-*
+
+# Local development
+local-dev/
+sandbox/
+playground/
+
+# Security and secrets
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+private/
+
+# Benchmark results
+benchmarks/
+benchmark-results/
+*.bench
+
+# Fuzzing
+fuzz/
+corpus/
+crashes/
+
+# Local binaries
+bin/
+local-bin/
+
+# Container files
+Dockerfile.local
+docker-compose.override.yml

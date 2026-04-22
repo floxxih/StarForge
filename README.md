@@ -228,6 +228,7 @@ Please keep PRs scoped to a single issue and include a clear description of what
 
 ---
 
+<<<<<<< HEAD
 ## Open Issues
 
 Issues labeled `Stellar Wave` are available for contributors during an active sprint.
@@ -265,6 +266,8 @@ Issues labeled `Stellar Wave` are available for contributors during an active sp
 
 ---
 
+=======
+>>>>>>> 46a258c (adding gitignore)
 ## License
 
 MIT © 2025 — See [LICENSE](./LICENSE) for details.
