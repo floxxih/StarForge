@@ -227,47 +227,6 @@ This project participates in the **[Stellar Wave Program](https://www.drips.netw
 Please keep PRs scoped to a single issue and include a clear description of what changed and why.
 
 ---
-
-<<<<<<< HEAD
-## Open Issues
-
-Issues labeled `Stellar Wave` are available for contributors during an active sprint.
-
-### 🟢 Trivial
-
-- [ ] Add `--network` flag to `wallet create` to override the global default
-- [ ] Add `starforge wallet rename <old> <new>` command
-- [ ] Validate public key format before saving a wallet
-- [ ] Show wallet count and config path in `starforge wallet list`
-- [ ] Add `--quiet` flag to suppress the ASCII banner
-
-### 🟡 Medium
-
-- [ ] Add `starforge network switch <testnet|mainnet>` command to update global config
-- [ ] Add `starforge wallet export` to output a wallet's public key as a QR code in the terminal
-- [ ] Encrypt secret keys at rest in config.toml using a user-provided passphrase
-- [ ] Add `starforge tx history <public-key>` to display recent transactions in the terminal
-
-### 🔴 High
-
-- [ ] Add `starforge contract invoke` to call a deployed Soroban contract function from the CLI
-- [ ] Add `starforge tx send` to build and submit a payment transaction
-- [ ] Add `starforge new contract` template generator — interactive prompts for custom contract scaffolding
-- [ ] Add shell completion support (`starforge completions bash|zsh|fish`)
-
----
-
-## Roadmap
-
-- **v0.1** — Wallet management, project scaffolding (4 templates), deploy flow ✅
-- **v0.2** — Network switch command, contract inspect, stronger wallet primitives
-- **v0.3** — Contract invocation, payment transactions, key encryption
-- **v1.0** — Full Soroban developer toolkit with interactive contract CLI
-
----
-
-=======
->>>>>>> 46a258c (adding gitignore)
 ## License
 
 MIT © 2025 — See [LICENSE](./LICENSE) for details.
