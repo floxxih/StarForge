@@ -35,7 +35,66 @@ pub fn validate_public_key(key: &str) -> Result<()> {
             bad_char
         );
     }
+    Ok(())
+}
 
+/// Validates a Soroban contract ID.
+/// Must start with 'C', be exactly 56 chars long, and use valid base32 chars.
+pub fn validate_contract_id(id: &str) -> Result<()> {
+    if !id.starts_with('C') {
+        anyhow::bail!("Invalid contract ID: must start with 'C'.");
+    }
+    if id.len() != 56 {
+        anyhow::bail!("Invalid contract ID: expected 56 characters, got {}.", id.len());
+    }
+    if let Some(bad_char) = id.chars().find(|c| !matches!(c, 'A'..='Z' | '2'..='7')) {
+        anyhow::bail!("Invalid contract ID: contains invalid character '{}'.", bad_char);
+    }
+    Ok(())
+}
+
+/// Validates a file path exists and optionally matches an extension.
+pub fn validate_file_path(path: &std::path::Path, expected_ext: Option<&str>) -> Result<()> {
+    if !path.exists() {
+        anyhow::bail!("Path does not exist: {}", path.display());
+    }
+    if !path.is_file() {
+        anyhow::bail!("Path is not a file: {}", path.display());
+    }
+    if let Some(ext) = expected_ext {
+        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
+            anyhow::bail!("Invalid file type: expected '{}' extension.", ext);
+        }
+    }
+    Ok(())
+}
+
+/// Validates network setting.
+pub fn validate_network(network: &str) -> Result<()> {
+    match network {
+        "testnet" | "mainnet" => Ok(()),
+        _ => anyhow::bail!("Unsupported network '{}'. Use 'testnet' or 'mainnet'.", network),
+    }
+}
+
+/// Validates an amount string parses to a positive f64.
+pub fn validate_amount(amount: &str) -> Result<f64> {
+    let amt: f64 = amount.parse().map_err(|_| anyhow::anyhow!("Invalid amount format: '{}'", amount))?;
+    if amt <= 0.0 {
+        anyhow::bail!("Amount must be strictly positive, got {}", amt);
+    }
+    Ok(amt)
+}
+
+/// Validates a wallet name.
+/// Must not be empty and must contain only alphanumeric chars, dashes, or underscores.
+pub fn validate_wallet_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Wallet name cannot be empty.");
+    }
+    if let Some(bad_char) = name.chars().find(|c| !c.is_alphanumeric() && *c != '-' && *c != '_') {
+        anyhow::bail!("Invalid wallet name '{}': contains invalid character '{}'. Use alphanumeric, dash, or underscore.", name, bad_char);
+    }
     Ok(())
 }
 
@@ -122,6 +181,45 @@ mod tests {
     fn test_rejects_empty_key() {
         let err = validate_public_key("").unwrap_err();
         assert!(err.to_string().contains("must start with 'G'"));
+    }
+
+    #[test]
+    fn test_valid_contract_id() {
+        let id = "CAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNW";
+        assert!(validate_contract_id(id).is_ok());
+    }
+
+    #[test]
+    fn test_rejects_contract_id_not_starting_with_c() {
+        // Starts with 'G'
+        let id = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNW";
+        let err = validate_contract_id(id).unwrap_err();
+        assert!(err.to_string().contains("must start with 'C'"));
+    }
+
+    #[test]
+    fn test_valid_amount() {
+        assert_eq!(validate_amount("10.5").unwrap(), 10.5);
+        assert_eq!(validate_amount("1").unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_invalid_amount() {
+        assert!(validate_amount("-5").is_err());
+        assert!(validate_amount("0").is_err());
+        assert!(validate_amount("abc").is_err());
+    }
+
+    #[test]
+    fn test_valid_wallet_name() {
+        assert!(validate_wallet_name("alice-123_DEPLOY").is_ok());
+    }
+
+    #[test]
+    fn test_invalid_wallet_name() {
+        assert!(validate_wallet_name("").is_err());
+        assert!(validate_wallet_name("alice!").is_err());
+        assert!(validate_wallet_name("my wallet").is_err());
     }
 }
 

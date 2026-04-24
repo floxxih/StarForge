@@ -1,4 +1,4 @@
-use crate::utils::{config, print as p, soroban};
+use crate::utils::{config, crypto, print as p, soroban};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
@@ -51,6 +51,10 @@ pub fn handle(cmd: ContractCommands) -> Result<()> {
 }
 
 fn handle_inspect(args: InspectArgs) -> Result<()> {
+    config::validate_contract_id(&args.contract_id)?;
+    if let Some(ref net) = args.network {
+        config::validate_network(net)?;
+    }
     let network = resolve_network(args.network)?;
 
     p::header("Inspect Soroban Contract");
@@ -114,6 +118,9 @@ fn handle_inspect(args: InspectArgs) -> Result<()> {
 
 fn handle_invoke(args: InvokeArgs) -> Result<()> {
     p::header("Invoke Soroban Contract");
+
+    config::validate_contract_id(&args.contract_id)?;
+    config::validate_network(&args.network)?;
 
     // Validate arguments and types match
     if args.args.len() != args.types.len() && !args.types.is_empty() {
@@ -220,8 +227,17 @@ fn handle_invoke(args: InvokeArgs) -> Result<()> {
 
     // Step 2: Submit if requested
     if args.submit {
-        if let Some(wallet) = wallet {
+        if let Some(mut wallet) = wallet {
             println!();
+            
+            if let Some(sk) = &wallet.secret_key {
+                if sk.contains(':') {
+                    let pwd = crypto::prompt_password(&format!("Enter password to decrypt wallet '{}'", wallet.name), false)?;
+                    let plain_sk = crypto::decrypt_secret(&pwd, sk)?;
+                    wallet.secret_key = Some(plain_sk);
+                }
+            }
+
             p::step(2, 2, "Submitting transaction…");
 
             let tx_result = soroban::submit_transaction(

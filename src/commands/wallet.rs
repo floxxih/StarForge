@@ -1,4 +1,4 @@
-use crate::utils::{config, horizon, print as p};
+use crate::utils::{config, crypto, horizon, print as p};
 use anyhow::Result;
 use chrono::Utc;
 use clap::Subcommand;
@@ -75,6 +75,8 @@ fn generate_keypair() -> (String, String) {
 fn create(name: String, fund: bool, network_override: Option<String>) -> Result<()> {
     let mut cfg = config::load()?;
 
+    config::validate_wallet_name(&name)?;
+
     if cfg.wallets.iter().any(|w| w.name == name) {
         anyhow::bail!("A wallet named '{}' already exists.", name);
     }
@@ -88,14 +90,19 @@ fn create(name: String, fund: bool, network_override: Option<String>) -> Result<
     let (public_key, secret_key) = generate_keypair();
     println!();
     p::kv_accent("Public Key", &public_key);
-    p::kv("Secret Key", &"*".repeat(56));
+    
+    println!();
+    let pwd = crypto::prompt_password("Set a secure password to encrypt this wallet", true)?;
+    let encrypted_secret = crypto::encrypt_secret(&pwd, &secret_key)?;
+    
+    p::kv("Secret Key", &"Encrypted and safely stored.");
     println!();
 
     p::step(2, steps, "Saving to ~/.starforge/config.toml…");
     let wallet = config::WalletEntry {
         name: name.clone(),
         public_key: public_key.clone(),
-        secret_key: Some(secret_key),
+        secret_key: Some(encrypted_secret),
         network: network.clone(),
         created_at: Utc::now().to_rfc3339(),
         funded: false,
@@ -183,7 +190,17 @@ fn show(name: String, reveal: bool) -> Result<()> {
 
     if reveal {
         if let Some(sk) = &w.secret_key {
-            p::kv("Secret Key", sk);
+            // Check if it's plaintext
+            if !sk.contains(':') && sk.starts_with('S') && sk.len() == 56 {
+                p::warn("Warning: This wallet is using an unencrypted legacy key!");
+                p::kv("Secret Key", sk);
+            } else {
+                let pwd = crypto::prompt_password(&format!("Enter password for wallet '{}'", name), false)?;
+                match crypto::decrypt_secret(&pwd, sk) {
+                    Ok(plain_sk) => p::kv("Secret Key", &plain_sk),
+                    Err(_) => anyhow::bail!("Incorrect password or unable to decrypt."),
+                }
+            }
         }
     } else {
         p::kv(
@@ -214,6 +231,7 @@ fn show(name: String, reveal: bool) -> Result<()> {
 }
 
 fn fund_wallet(name: String) -> Result<()> {
+    config::validate_wallet_name(&name)?;
     let mut cfg = config::load()?;
 
     if cfg.network == "mainnet" {
@@ -242,6 +260,7 @@ fn fund_wallet(name: String) -> Result<()> {
 }
 
 fn remove(name: String) -> Result<()> {
+    config::validate_wallet_name(&name)?;
     let mut cfg = config::load()?;
     let before = cfg.wallets.len();
     cfg.wallets.retain(|w| w.name != name);
@@ -255,6 +274,9 @@ fn remove(name: String) -> Result<()> {
     Ok(())
 }
 fn rename(old_name: String, new_name: String) -> Result<()> {
+    config::validate_wallet_name(&old_name)?;
+    config::validate_wallet_name(&new_name)?;
+    
     let mut cfg = config::load()?;
     if !cfg.wallets.iter().any(|w| w.name == old_name) {
         anyhow::bail!("No wallet named '{}' found", old_name);
