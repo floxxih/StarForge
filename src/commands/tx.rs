@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
 
-use crate::utils::{config, horizon, print as p};
+use crate::utils::{config, crypto, horizon, print as p};
 
 #[derive(Args)]
 pub struct TxArgs {
@@ -63,6 +63,11 @@ pub fn handle(args: TxArgs) -> Result<()> {
 fn handle_send(args: SendArgs) -> Result<()> {
     p::header("Send Stellar Payment");
 
+    config::validate_wallet_name(&args.from)?;
+    config::validate_public_key(&args.to)?;
+    config::validate_network(&args.network)?;
+    config::validate_amount(&args.amount)?;
+
     // Load configuration and find wallet
     let cfg = config::load()?;
     let wallet = cfg.wallets
@@ -79,11 +84,7 @@ fn handle_send(args: SendArgs) -> Result<()> {
     let (asset_code, asset_issuer) = parse_asset(&args.asset)?;
 
     // Validate amount
-    let amount_f64: f64 = args.amount.parse()
-        .map_err(|_| anyhow::anyhow!("Invalid amount: {}", args.amount))?;
-    if amount_f64 <= 0.0 {
-        anyhow::bail!("Amount must be positive");
-    }
+    let amount_f64 = config::validate_amount(&args.amount)?;
 
     p::separator();
     p::kv("From Wallet", &wallet.name);
@@ -167,10 +168,17 @@ fn handle_send(args: SendArgs) -> Result<()> {
 
     // Submit transaction
     println!();
+    
+    let mut secret_key = wallet.secret_key.as_ref().unwrap().clone();
+    if secret_key.contains(':') {
+        let pwd = crypto::prompt_password(&format!("Enter password to decrypt wallet '{}'", wallet.name), false)?;
+        secret_key = crypto::decrypt_secret(&pwd, &secret_key)?;
+    }
+
     p::info("Submitting transaction…");
     let submit_result = horizon::submit_payment_transaction(
         &tx_result.transaction_xdr,
-        wallet.secret_key.as_ref().unwrap(),
+        &secret_key,
         &args.network,
     )?;
 
@@ -209,11 +217,14 @@ fn parse_asset(asset: &str) -> Result<(Option<String>, Option<String>)> {
 fn handle_history(public_key: String, limit: u8, network_override: Option<String>) -> Result<()> {
     let limit = limit.min(50);
 
+    config::validate_public_key(&public_key)?;
+
     let network = network_override.unwrap_or_else(|| {
         config::load()
             .map(|c| c.network)
             .unwrap_or_else(|_| "testnet".to_string())
     });
+    config::validate_network(&network)?;
 
     println!();
     println!("  {} {}", "◆".cyan().bold(), "Transaction History".white().bold());
