@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 /// Validates that a string is a well-formed Stellar Ed25519 public key.
 ///
@@ -102,6 +103,14 @@ pub fn validate_wallet_name(name: &str) -> Result<()> {
 pub struct Config {
     pub network: String,
     pub wallets: Vec<WalletEntry>,
+    #[serde(default)]
+    pub networks: std::collections::HashMap<String, NetworkConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NetworkConfig {
+    pub horizon_url: String,
+    pub soroban_rpc_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -116,9 +125,20 @@ pub struct WalletEntry {
 
 impl Default for Config {
     fn default() -> Self {
+        let mut networks = HashMap::new();
+        networks.insert("testnet".to_string(), NetworkConfig {
+            horizon_url: "https://horizon-testnet.stellar.org".to_string(),
+            soroban_rpc_url: Some("https://soroban-testnet.stellar.org".to_string()),
+        });
+        networks.insert("mainnet".to_string(), NetworkConfig {
+            horizon_url: "https://horizon.stellar.org".to_string(),
+            soroban_rpc_url: Some("https://mainnet.sorobanrpc.com".to_string()),
+        });
+
         Self {
             network: "testnet".to_string(),
             wallets: vec![],
+            networks,
         }
     }
 }
@@ -151,7 +171,7 @@ mod tests {
     #[test]
     fn test_valid_public_key() {
         // Well-formed Stellar public key (56 chars, starts with G, valid base32)
-        let key = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+        let key = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNT";
         assert!(validate_public_key(key).is_ok());
     }
 
@@ -172,7 +192,7 @@ mod tests {
     #[test]
     fn test_rejects_key_invalid_characters() {
         // Lowercase letters are not valid base32
-        let key = "Gaazi4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
+        let key = "Gaazi4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWNT";
         let err = validate_public_key(key).unwrap_err();
         assert!(err.to_string().contains("invalid character"));
     }
@@ -233,5 +253,22 @@ pub fn save(config: &Config) -> Result<()> {
         .with_context(|| "Failed to serialize config")?;
     fs::write(config_path(), contents)
         .with_context(|| "Failed to write config file")?;
+    Ok(())
+}
+
+pub fn get_network_config(cfg: &Config, network: &str) -> Result<NetworkConfig> {
+    cfg.networks.get(network)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Network '{}' not found in configuration", network))
+}
+
+pub fn add_custom_network(config: &mut Config, name: String, horizon_url: String, soroban_rpc_url: Option<String>) -> Result<()> {
+    if config.networks.contains_key(&name) {
+        anyhow::bail!("Network '{}' already exists", name);
+    }
+    config.networks.insert(name, NetworkConfig {
+        horizon_url,
+        soroban_rpc_url,
+    });
     Ok(())
 }
