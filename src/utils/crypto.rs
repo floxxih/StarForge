@@ -7,11 +7,15 @@ use dialoguer::Password;
 use rand::RngCore;
 
 pub fn prompt_password(prompt: &str, confirm: bool) -> Result<String> {
-    let mut builder = Password::new();
-    builder.with_prompt(prompt);
-    if confirm {
-        builder.with_confirmation("Confirm password", "Passwords mismatching");
-    }
+    let builder = Password::new()
+        .with_prompt(prompt);
+
+    let builder = if confirm {
+        builder.with_confirmation("Confirm password", "Passwords mismatching")
+    } else {
+        builder
+    };
+
     let pwd = builder.interact()?;
     if pwd.is_empty() {
         anyhow::bail!("Password cannot be empty");
