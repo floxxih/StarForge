@@ -19,6 +19,9 @@ pub enum WalletCommands {
         /// Network to associate with this wallet (overrides global config)
         #[arg(long, value_parser = ["testnet", "mainnet"])]
         network: Option<String>,
+        /// Encrypt the secret key with a passphrase at rest
+        #[arg(long, default_value = "false")]
+        encrypt: bool,
     },
     /// List all saved wallets
     List,
@@ -49,7 +52,7 @@ pub enum WalletCommands {
 
 pub fn handle(cmd: WalletCommands) -> Result<()> {
     match cmd {
-        WalletCommands::Create { name, fund, network } => create(name, fund, network),
+        WalletCommands::Create { name, fund, network, encrypt } => create(name, fund, network, encrypt),
         WalletCommands::List                  => list(),
         WalletCommands::Show { name, reveal } => show(name, reveal),
         WalletCommands::Fund { name } => fund_wallet(name),
@@ -72,7 +75,7 @@ fn generate_keypair() -> (String, String) {
     (public_key, secret_key)
 }
 
-fn create(name: String, fund: bool, network_override: Option<String>) -> Result<()> {
+fn create(name: String, fund: bool, network_override: Option<String>, encrypt: bool) -> Result<()> {
     let mut cfg = config::load()?;
 
     config::validate_wallet_name(&name)?;
@@ -90,19 +93,24 @@ fn create(name: String, fund: bool, network_override: Option<String>) -> Result<
     let (public_key, secret_key) = generate_keypair();
     println!();
     p::kv_accent("Public Key", &public_key);
-    
+
     println!();
-    let pwd = crypto::prompt_password("Set a secure password to encrypt this wallet", true)?;
-    let encrypted_secret = crypto::encrypt_secret(&pwd, &secret_key)?;
-    
-    p::kv("Secret Key", &"Encrypted and safely stored.");
+    let secret_to_store = if encrypt {
+        let pwd = crypto::prompt_password("Set a secure passphrase to encrypt this wallet", true)?;
+        crypto::encrypt_secret(&pwd, &secret_key)?
+    } else {
+        secret_key.clone()
+    };
+
+    let status = if encrypt { "Encrypted and safely stored." } else { "Stored in plaintext (not recommended for mainnet)." };
+    p::kv("Secret Key", status);
     println!();
 
     p::step(2, steps, "Saving to ~/.starforge/config.toml…");
     let wallet = config::WalletEntry {
         name: name.clone(),
         public_key: public_key.clone(),
-        secret_key: Some(encrypted_secret),
+        secret_key: Some(secret_to_store),
         network: network.clone(),
         created_at: Utc::now().to_rfc3339(),
         funded: false,
