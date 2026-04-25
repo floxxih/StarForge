@@ -23,10 +23,10 @@ This project is actively maintained and participates in the [Stellar Wave Progra
 ## Features
 
 ### 🔑 Wallet Management
-Create and manage Stellar keypairs locally. Fund testnet accounts via Friendbot, list all saved wallets, inspect live on-chain balances, and securely store keys in `~/.starforge/config.toml`.
+Create and manage Stellar ed25519 keypairs locally. Generate cryptographically secure keys using proper Stellar strkey encoding (G... for public, S... for secret). Optionally encrypt keys at rest with AES-256-GCM. Fund testnet accounts via Friendbot, list all saved wallets, inspect live on-chain balances, and securely store keys in `~/.starforge/config.toml`.
 
 ### ◻ Project Scaffolding
-Scaffold new Soroban smart contract projects from battle-tested templates with one command. Available templates: `hello-world`, `token`, `nft`, and `voting`. Also scaffolds full Stellar dApp frontends (Vite + React).
+Scaffold new Soroban smart contract projects from battle-tested templates with one command. Choose from: `hello-world`, `token`, `nft`, and `voting`. Use interactive mode (`--interactive`) to customize contract options like author, license, storage type, and test inclusion. Also scaffolds full Stellar dApp frontends (Vite + React).
 
 ### 🚀 Contract Deployment
 Validate, size-check, and deploy compiled Soroban `.wasm` files to Testnet or Mainnet. Verifies account balance on-chain, calculates WASM hash, and generates the exact `stellar contract deploy` command to complete the deployment.
@@ -71,6 +71,9 @@ starforge info
 # Create a new keypair
 starforge wallet create alice
 
+# Create a wallet with encrypted storage (prompts for passphrase)
+starforge wallet create alice --encrypt
+
 # Create and fund immediately (testnet only)
 starforge wallet create deployer --fund
 
@@ -80,7 +83,7 @@ starforge wallet list
 # Show wallet details + live balance
 starforge wallet show alice
 
-# Reveal secret key
+# Reveal secret key (prompts for passphrase if encrypted)
 starforge wallet show alice --reveal
 
 # Fund an existing wallet via Friendbot
@@ -90,11 +93,36 @@ starforge wallet fund alice
 starforge wallet remove alice
 ```
 
+### Network commands
+
+```bash
+# Show current network and available networks
+starforge network show
+
+# Switch to mainnet
+starforge network switch mainnet
+
+# Add a custom network
+starforge network add mynet \
+  --horizon-url https://my-horizon.example.com \
+  --soroban-rpc-url https://my-soroban.example.com
+
+# Switch to custom network
+starforge network switch mynet
+
+# Test network connectivity
+starforge network test
+starforge network test mainnet
+```
+
 ### Scaffold commands
 
 ```bash
 # Scaffold a Soroban contract (hello-world template)
 starforge new contract my-contract
+
+# Scaffold interactively with custom options
+starforge new contract my-contract --interactive
 
 # Scaffold with a specific template
 starforge new contract my-token --template token
@@ -188,13 +216,38 @@ network = "testnet"
 [[wallets]]
 name = "alice"
 public_key = "GABC...XYZ"
-secret_key = "SABC...XYZ"
+secret_key = "SABC...XYZ"  # plaintext or encrypted (see Security section)
 network = "testnet"
 created_at = "2025-01-01T00:00:00Z"
 funded = true
+
+[networks.testnet]
+horizon_url = "https://horizon-testnet.stellar.org"
+soroban_rpc_url = "https://soroban-testnet.stellar.org"
 ```
 
-> ⚠️ Secret keys are stored in plaintext. Do not use wallets containing real mainnet funds for development purposes.
+### Security
+
+Secret keys can be stored **encrypted at rest** using the `--encrypt` flag during wallet creation:
+
+```bash
+starforge wallet create mykey --encrypt
+# You will be prompted to set a secure passphrase
+```
+
+Encryption uses:
+- **AES-256-GCM** for authenticated encryption
+- **Argon2** for key derivation from your passphrase
+- **Random salt and nonce** for each encryption operation
+
+When revealing an encrypted key, you must provide the correct passphrase:
+
+```bash
+starforge wallet show mykey --reveal
+# You will be prompted for the passphrase
+```
+
+Unencrypted keys (without `--encrypt`) are stored in plaintext and are suitable only for testnet or throwaway accounts. **Do not use plaintext keys on mainnet with real funds.**
 
 ---
 
