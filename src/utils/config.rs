@@ -107,6 +107,7 @@ pub struct Config {
     pub wallets: Vec<WalletEntry>,
     #[serde(default)]
     pub networks: std::collections::HashMap<String, NetworkConfig>,
+    pub telemetry_enabled: Option<bool>,
 }
 
 fn default_version() -> String {
@@ -146,6 +147,7 @@ impl Default for Config {
             network: "testnet".to_string(),
             wallets: vec![],
             networks,
+            telemetry_enabled: Some(true),
         }
     }
 }
@@ -228,6 +230,14 @@ pub fn rollback_config(version: &str) -> Result<()> {
 pub fn config_dir() -> PathBuf {
     let home = dirs::home_dir().expect("Could not find home directory");
     home.join(".starforge")
+}
+
+pub fn get_data_dir() -> Result<PathBuf> {
+    let dir = config_dir().join("data");
+    if !dir.exists() {
+        fs::create_dir_all(&dir)?;
+    }
+    Ok(dir)
 }
 
 pub fn config_path() -> PathBuf {

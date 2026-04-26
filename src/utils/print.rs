@@ -1,4 +1,6 @@
 use colored::*;
+use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
+use std::time::Duration;
 
 pub fn success(msg: &str) {
     println!("{} {}", "✓".green().bold(), msg);
@@ -38,4 +40,31 @@ pub fn step(n: usize, total: usize, msg: &str) {
         format!("[{}/{}]", n, total).dimmed(),
         msg.bright_white()
     );
+}
+
+pub fn spinner(msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    pb.set_message(msg.to_string());
+    pb
+}
+
+pub fn progress_bar(total: u64, msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total);
+    pb.set_style(ProgressStyle::with_template(
+        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}"
+    )
+    .unwrap()
+    .progress_chars("#>-"));
+    pb.set_message(msg.to_string());
+    pb
+}
+
+pub fn multi_progress() -> MultiProgress {
+    MultiProgress::new()
 }

@@ -1,5 +1,6 @@
 mod commands;
 mod utils;
+pub mod plugins;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -41,6 +42,8 @@ enum Commands {
     /// View or switch the active network (testnet/mainnet)
     #[command(subcommand)]
     Network(commands::network::NetworkCommands),
+    /// Generate shell completions for bash, zsh, and fish
+    Completions(commands::completions::CompletionShell),
 }
 
 fn main() {
@@ -50,6 +53,18 @@ fn main() {
         print_banner();
     }
 
+    let command_name = match &cli.command {
+        Commands::Wallet(_) => "wallet",
+        Commands::New(_) => "new",
+        Commands::Contract(_) => "contract",
+        Commands::Deploy(_) => "deploy",
+        Commands::Info => "info",
+        Commands::Tx(_) => "tx",
+        Commands::Network(_) => "network",
+        Commands::Completions(_) => "completions",
+    }.to_string();
+
+    let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::Wallet(cmd)  => commands::wallet::handle(cmd),
         Commands::New(cmd)     => commands::new::handle(cmd),
@@ -58,7 +73,14 @@ fn main() {
         Commands::Info         => commands::info::handle(),
         Commands::Tx(args) => commands::tx::handle(args),
         Commands::Network(cmd) => commands::network::handle(cmd),
+        Commands::Completions(shell) => commands::completions::handle(shell),
     };
+    let duration = start.elapsed();
+
+    let _ = utils::telemetry::track_event(&command_name, serde_json::json!({
+        "success": result.is_ok(),
+        "duration_ms": duration.as_millis(),
+    }));
 
     if let Err(e) = result {
         eprintln!("\n  {} {}\n", "✗ Error:".red().bold(), e);
