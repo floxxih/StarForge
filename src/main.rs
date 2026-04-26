@@ -1,5 +1,6 @@
 mod commands;
 mod utils;
+pub mod plugins;
 
 use clap::{Parser, Subcommand};
 use colored::*;

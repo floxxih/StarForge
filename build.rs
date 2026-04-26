@@ -43,5 +43,13 @@ fn main() {
         generate_to(shell, &mut cmd, "starforge", &completions_dir).expect("Failed to generate completions");
     }
 
+    let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let output = std::process::Command::new(rustc)
+        .arg("--version")
+        .output()
+        .expect("Failed to get rustc version");
+    let version = String::from_utf8(output.stdout).unwrap();
+    println!("cargo:rustc-env=RUSTC_VERSION={}", version.trim());
+
     println!("cargo:rerun-if-changed=build.rs");
 }
