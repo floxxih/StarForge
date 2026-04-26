@@ -47,11 +47,17 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(crate::commands::new::NewCommands),
+    /// Contract operations (invoke, etc.)
+    #[command(subcommand)]
+    Contract(crate::commands::contract::ContractCommands),
     /// Deploy a compiled Soroban contract (.wasm)
     Deploy(crate::commands::deploy::DeployArgs),
     /// Show starforge config and environment info
     Info,
-    /// Print shell completion scripts
+    Tx(crate::commands::tx::TxArgs),
+    /// View or switch the active network (testnet/mainnet)
     #[command(subcommand)]
+    Network(crate::commands::network::NetworkCommands),
+    /// Print shell completion scripts
     Completions(CompletionShell),
 }

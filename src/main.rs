@@ -41,6 +41,8 @@ enum Commands {
     /// View or switch the active network (testnet/mainnet)
     #[command(subcommand)]
     Network(commands::network::NetworkCommands),
+    /// Generate shell completions for bash, zsh, and fish
+    Completions(commands::completions::CompletionShell),
 }
 
 fn main() {
@@ -58,6 +60,7 @@ fn main() {
         Commands::Info         => commands::info::handle(),
         Commands::Tx(args) => commands::tx::handle(args),
         Commands::Network(cmd) => commands::network::handle(cmd),
+        Commands::Completions(shell) => commands::completions::handle(shell),
     };
 
     if let Err(e) = result {
