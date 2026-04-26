@@ -101,10 +101,16 @@ pub fn validate_wallet_name(name: &str) -> Result<()> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
+    #[serde(default = "default_version")]
+    pub version: String,
     pub network: String,
     pub wallets: Vec<WalletEntry>,
     #[serde(default)]
     pub networks: std::collections::HashMap<String, NetworkConfig>,
+}
+
+fn default_version() -> String {
+    "1".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -136,11 +142,87 @@ impl Default for Config {
         });
 
         Self {
+            version: "1".to_string(),
             network: "testnet".to_string(),
             wallets: vec![],
             networks,
         }
     }
+}
+
+const CURRENT_CONFIG_VERSION: &str = "1";
+
+pub fn migrate_config(mut config: Config) -> Result<Config> {
+    let config_version = config.version.as_str();
+    
+    if config_version == CURRENT_CONFIG_VERSION {
+        return Ok(config);
+    }
+    
+    // Create backup before migration
+    backup_config(&config)?;
+    
+    // Apply migrations in sequence
+    match config_version {
+        "" | "0" => {
+            // Migration from v0 to v1: Add version field
+            config.version = "1".to_string();
+        }
+        _ => {
+            anyhow::bail!(
+                "Unknown config version '{}'. Current version is '{}'.",
+                config_version,
+                CURRENT_CONFIG_VERSION
+            );
+        }
+    }
+    
+    Ok(config)
+}
+
+fn backup_config(config: &Config) -> Result<()> {
+    let backup_path = config_dir().join(format!(
+        "config.backup.v{}.{}.toml",
+        config.version,
+        chrono::Utc::now().timestamp()
+    ));
+    
+    let contents = toml::to_string_pretty(config)
+        .with_context(|| "Failed to serialize config for backup")?;
+    
+    fs::write(&backup_path, contents)
+        .with_context(|| format!("Failed to write backup to {:?}", backup_path))?;
+    
+    Ok(())
+}
+
+pub fn rollback_config(version: &str) -> Result<()> {
+    let config_dir = config_dir();
+    let backup_pattern = format!("config.backup.v{}", version);
+    
+    let mut backups: Vec<_> = fs::read_dir(&config_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.file_name()
+                .to_string_lossy()
+                .starts_with(&backup_pattern)
+        })
+        .collect();
+    
+    if backups.is_empty() {
+        anyhow::bail!("No backup found for version '{}'", version);
+    }
+    
+    // Sort by timestamp (newest first)
+    backups.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    
+    let latest_backup = &backups[0];
+    let backup_path = latest_backup.path();
+    
+    fs::copy(&backup_path, config_path())
+        .with_context(|| format!("Failed to restore backup from {:?}", backup_path))?;
+    
+    Ok(())
 }
 
 pub fn config_dir() -> PathBuf {
@@ -159,8 +241,17 @@ pub fn load() -> Result<Config> {
     }
     let contents = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read config at {:?}", path))?;
-    let config: Config = toml::from_str(&contents)
+    let mut config: Config = toml::from_str(&contents)
         .with_context(|| "Failed to parse config file")?;
+    
+    // Migrate config if needed
+    config = migrate_config(config)?;
+    
+    // Save migrated config
+    if config.version != CURRENT_CONFIG_VERSION {
+        save(&config)?;
+    }
+    
     Ok(config)
 }
 

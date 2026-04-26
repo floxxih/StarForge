@@ -2,6 +2,7 @@ pub mod completions;
 pub mod contract;
 pub mod deploy;
 pub mod info;
+pub mod invoke;
 pub mod network;
 pub mod new;
 pub mod tx;

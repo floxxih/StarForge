@@ -1,0 +1,296 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use stellar_strkey::ed25519::PublicKey as StellarPublicKey;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MultiSigAccount {
+    pub name: String,
+    pub account_id: String,
+    pub signers: Vec<Signer>,
+    pub thresholds: Thresholds,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Signer {
+    pub public_key: String,
+    pub weight: u8,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Thresholds {
+    pub low: u8,
+    pub medium: u8,
+    pub high: u8,
+}
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        Self {
+            low: 1,
+            medium: 1,
+            high: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiSigTransaction {
+    pub id: String,
+    pub account_id: String,
+    pub transaction_xdr: String,
+    pub signatures: Vec<Signature>,
+    pub threshold_required: u8,
+    pub current_weight: u8,
+    pub status: TransactionStatus,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Signature {
+    pub signer_key: String,
+    pub signature: String,
+    pub signed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TransactionStatus {
+    Pending,
+    ReadyToSubmit,
+    Submitted,
+    Failed,
+}
+
+pub fn validate_signer(public_key: &str) -> Result<()> {
+    StellarPublicKey::from_string(public_key)
+        .map_err(|_| anyhow::anyhow!("Invalid Stellar public key: {}", public_key))?;
+    Ok(())
+}
+
+pub fn validate_weight(weight: u8) -> Result<()> {
+    if weight == 0 {
+        anyhow::bail!("Signer weight must be greater than 0");
+    }
+    if weight > 255 {
+        anyhow::bail!("Signer weight cannot exceed 255");
+    }
+    Ok(())
+}
+
+pub fn validate_threshold(threshold: u8) -> Result<()> {
+    if threshold == 0 {
+        anyhow::bail!("Threshold must be greater than 0");
+    }
+    if threshold > 255 {
+        anyhow::bail!("Threshold cannot exceed 255");
+    }
+    Ok(())
+}
+
+pub fn validate_thresholds(thresholds: &Thresholds, total_weight: u8) -> Result<()> {
+    validate_threshold(thresholds.low)?;
+    validate_threshold(thresholds.medium)?;
+    validate_threshold(thresholds.high)?;
+
+    if thresholds.low > total_weight {
+        anyhow::bail!(
+            "Low threshold ({}) exceeds total signer weight ({})",
+            thresholds.low,
+            total_weight
+        );
+    }
+    if thresholds.medium > total_weight {
+        anyhow::bail!(
+            "Medium threshold ({}) exceeds total signer weight ({})",
+            thresholds.medium,
+            total_weight
+        );
+    }
+    if thresholds.high > total_weight {
+        anyhow::bail!(
+            "High threshold ({}) exceeds total signer weight ({})",
+            thresholds.high,
+            total_weight
+        );
+    }
+
+    Ok(())
+}
+
+pub fn calculate_total_weight(signers: &[Signer]) -> u8 {
+    signers.iter().map(|s| s.weight).sum()
+}
+
+pub fn check_transaction_ready(tx: &MultiSigTransaction) -> bool {
+    tx.current_weight >= tx.threshold_required
+}
+
+pub fn add_signature_to_transaction(
+    tx: &mut MultiSigTransaction,
+    signer_key: &str,
+    signature: String,
+) -> Result<()> {
+    // Check if already signed
+    if tx.signatures.iter().any(|s| s.signer_key == signer_key) {
+        anyhow::bail!("Signer '{}' has already signed this transaction", signer_key);
+    }
+
+    let sig = Signature {
+        signer_key: signer_key.to_string(),
+        signature,
+        signed_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    tx.signatures.push(sig);
+
+    // Update status
+    if check_transaction_ready(tx) {
+        tx.status = TransactionStatus::ReadyToSubmit;
+    }
+
+    Ok(())
+}
+
+pub fn build_multisig_transaction_xdr(
+    source_account: &str,
+    operations: &[String],
+    sequence: u64,
+    network: &str,
+) -> Result<String> {
+    // This is a simplified mock implementation
+    // In production, use stellar-xdr to build proper transaction XDR
+    
+    let _network_passphrase = match network {
+        "mainnet" => "Public Global Stellar Network ; September 2015",
+        _ => "Test SDF Network ; September 2015",
+    };
+
+    // Mock XDR generation
+    let mock_xdr = format!(
+        "multisig_tx_{}_ops{}_seq{}",
+        source_account,
+        operations.len(),
+        sequence
+    );
+
+    use base64::{engine::general_purpose, Engine as _};
+    Ok(general_purpose::STANDARD.encode(mock_xdr))
+}
+
+pub fn sign_transaction_partial(
+    transaction_xdr: &str,
+    secret_key: &str,
+    network: &str,
+) -> Result<String> {
+    // This is a simplified mock implementation
+    // In production, use stellar-xdr and ed25519 signing
+    
+    let _network_passphrase = match network {
+        "mainnet" => "Public Global Stellar Network ; September 2015",
+        _ => "Test SDF Network ; September 2015",
+    };
+
+    // Mock signing
+    let signature = format!("sig_{}_{}", &secret_key[..8], &transaction_xdr[..16]);
+    use base64::{engine::general_purpose, Engine as _};
+    Ok(general_purpose::STANDARD.encode(signature))
+}
+
+pub fn combine_signatures(
+    transaction_xdr: &str,
+    signatures: &[Signature],
+) -> Result<String> {
+    // This is a simplified mock implementation
+    // In production, use stellar-xdr to build TransactionEnvelope with all signatures
+    
+    let combined = format!(
+        "signed_multisig_tx_{}_with_{}_sigs",
+        &transaction_xdr[..16],
+        signatures.len()
+    );
+
+    use base64::{engine::general_purpose, Engine as _};
+    Ok(general_purpose::STANDARD.encode(combined))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_signer() {
+        // Generate a valid key for testing
+        use ed25519_dalek::SigningKey;
+        use rand::RngCore;
+        use stellar_strkey::ed25519::PublicKey as StellarPublicKey;
+        
+        let mut rng = rand::thread_rng();
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+        let signing_key = SigningKey::from_bytes(&seed);
+        let verifying_key = signing_key.verifying_key();
+        let valid_key = StellarPublicKey(verifying_key.to_bytes()).to_string();
+        
+        assert!(validate_signer(&valid_key).is_ok());
+
+        let invalid_key = "INVALID_KEY";
+        assert!(validate_signer(invalid_key).is_err());
+    }
+
+    #[test]
+    fn test_validate_weight() {
+        assert!(validate_weight(1).is_ok());
+        assert!(validate_weight(255).is_ok());
+        assert!(validate_weight(0).is_err());
+    }
+
+    #[test]
+    fn test_calculate_total_weight() {
+        let signers = vec![
+            Signer {
+                public_key: "GABC...".to_string(),
+                weight: 10,
+                name: None,
+            },
+            Signer {
+                public_key: "GDEF...".to_string(),
+                weight: 20,
+                name: None,
+            },
+        ];
+        assert_eq!(calculate_total_weight(&signers), 30);
+    }
+
+    #[test]
+    fn test_validate_thresholds() {
+        let thresholds = Thresholds {
+            low: 10,
+            medium: 20,
+            high: 30,
+        };
+        assert!(validate_thresholds(&thresholds, 30).is_ok());
+        assert!(validate_thresholds(&thresholds, 25).is_err());
+    }
+
+    #[test]
+    fn test_check_transaction_ready() {
+        let tx = MultiSigTransaction {
+            id: "tx1".to_string(),
+            account_id: "GABC...".to_string(),
+            transaction_xdr: "mock_xdr".to_string(),
+            signatures: vec![],
+            threshold_required: 20,
+            current_weight: 25,
+            status: TransactionStatus::Pending,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+        };
+        assert!(check_transaction_ready(&tx));
+
+        let tx2 = MultiSigTransaction {
+            current_weight: 15,
+            ..tx
+        };
+        assert!(!check_transaction_ready(&tx2));
+    }
+}
