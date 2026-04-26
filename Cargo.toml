@@ -33,6 +33,7 @@ base64     = "0.21"
 urlencoding = "2.1"
 indicatif = "0.17.7"
 libloading = "0.8.1"
+uuid = { version = "1.6.1", features = ["v4"] }
 
 [profile.release]
 opt-level = 3
