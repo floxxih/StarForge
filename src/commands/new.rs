@@ -338,7 +338,24 @@ impl {pascal} {{
 fn token_template(name: &str) -> String {
     let pascal = to_pascal(name);
     format!(r#"#![no_std]
-use soroban_sdk::{{contract, contractimpl, Address, Env, String}};
+use soroban_sdk::{{contract, contractimpl, contracttype, symbol_short, Address, Env, String}};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct TokenMetadata {{
+    pub decimal: u32,
+    pub name: String,
+    pub symbol: String,
+}}
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {{
+    Admin,
+    Metadata,
+    Balance(Address),
+    TotalSupply,
+}}
 
 #[contract]
 pub struct {pascal};
@@ -347,24 +364,72 @@ pub struct {pascal};
 impl {pascal} {{
     pub fn initialize(env: Env, admin: Address, decimal: u32, name: String, symbol: String) {{
         admin.require_auth();
-        // TODO: store token metadata in env.storage()
-        let _ = (decimal, name, symbol);
+        
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Metadata, &TokenMetadata {{ decimal, name, symbol }});
+        env.storage().instance().set(&DataKey::TotalSupply, &0i128);
     }}
 
     pub fn mint(env: Env, to: Address, amount: i128) {{
-        // TODO: implement minting logic
-        let _ = (to, amount);
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        
+        let balance = Self::balance(env.clone(), to.clone());
+        env.storage().persistent().set(&DataKey::Balance(to), &(balance + amount));
+        
+        let total: i128 = env.storage().instance().get(&DataKey::TotalSupply).unwrap();
+        env.storage().instance().set(&DataKey::TotalSupply, &(total + amount));
     }}
 
-    pub fn balance(_env: Env, _id: Address) -> i128 {{
-        // TODO: return balance from storage
-        0
+    pub fn balance(env: Env, id: Address) -> i128 {{
+        env.storage().persistent().get(&DataKey::Balance(id)).unwrap_or(0)
     }}
 
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {{
         from.require_auth();
-        // TODO: implement transfer
-        let _ = (to, amount);
+        
+        let from_balance = Self::balance(env.clone(), from.clone());
+        if from_balance < amount {{
+            panic!("insufficient balance");
+        }}
+        
+        env.storage().persistent().set(&DataKey::Balance(from), &(from_balance - amount));
+        
+        let to_balance = Self::balance(env.clone(), to.clone());
+        env.storage().persistent().set(&DataKey::Balance(to), &(to_balance + amount));
+    }}
+
+    pub fn total_supply(env: Env) -> i128 {{
+        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+    }}
+}}
+
+#[cfg(test)]
+mod test {{
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    #[test]
+    fn test_token_lifecycle() {{
+        let env = Env::default();
+        let contract_id = env.register_contract(None, {pascal});
+        let client = {pascal}Client::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        
+        env.mock_all_auths();
+        
+        client.initialize(&admin, &18, &String::from_str(&env, "Test Token"), &String::from_str(&env, "TST"));
+        
+        client.mint(&user1, &1000);
+        assert_eq!(client.balance(&user1), 1000);
+        assert_eq!(client.total_supply(), 1000);
+        
+        client.transfer(&user1, &user2, &300);
+        assert_eq!(client.balance(&user1), 700);
+        assert_eq!(client.balance(&user2), 300);
     }}
 }}
 "#, pascal = pascal)
@@ -373,30 +438,126 @@ impl {pascal} {{
 fn voting_template(name: &str) -> String {
     let pascal = to_pascal(name);
     format!(r#"#![no_std]
-use soroban_sdk::{{contract, contractimpl, Address, Env, Symbol}};
+use soroban_sdk::{{contract, contractimpl, contracttype, Address, Env, String, Vec}};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Proposal {{
+    pub id: u32,
+    pub creator: Address,
+    pub title: String,
+    pub yes_votes: u32,
+    pub no_votes: u32,
+    pub active: bool,
+}}
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {{
+    ProposalCount,
+    Proposal(u32),
+    Vote(u32, Address),
+}}
 
 #[contract]
 pub struct {pascal};
 
 #[contractimpl]
 impl {pascal} {{
-    pub fn create_proposal(env: Env, creator: Address, title: Symbol) -> u32 {{
+    pub fn create_proposal(env: Env, creator: Address, title: String) -> u32 {{
         creator.require_auth();
-        // TODO: store proposal, return ID
-        let _ = title;
-        0
+        
+        let count: u32 = env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0);
+        let proposal_id = count + 1;
+        
+        let proposal = Proposal {{
+            id: proposal_id,
+            creator,
+            title,
+            yes_votes: 0,
+            no_votes: 0,
+            active: true,
+        }};
+        
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage().instance().set(&DataKey::ProposalCount, &proposal_id);
+        
+        proposal_id
     }}
 
     pub fn vote(env: Env, voter: Address, proposal_id: u32, approve: bool) {{
         voter.require_auth();
-        // TODO: record vote in storage
-        let _ = (proposal_id, approve);
+        
+        let vote_key = DataKey::Vote(proposal_id, voter.clone());
+        if env.storage().persistent().has(&vote_key) {{
+            panic!("already voted");
+        }}
+        
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal not found"));
+        
+        if !proposal.active {{
+            panic!("proposal is closed");
+        }}
+        
+        if approve {{
+            proposal.yes_votes += 1;
+        }} else {{
+            proposal.no_votes += 1;
+        }}
+        
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage().persistent().set(&vote_key, &approve);
     }}
 
-    pub fn results(_env: Env, proposal_id: u32) -> (u32, u32) {{
-        // TODO: return (yes_votes, no_votes)
-        let _ = proposal_id;
-        (0, 0)
+    pub fn results(env: Env, proposal_id: u32) -> (u32, u32) {{
+        let proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal not found"));
+        
+        (proposal.yes_votes, proposal.no_votes)
+    }}
+
+    pub fn close_proposal(env: Env, proposal_id: u32) {{
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap_or_else(|| panic!("proposal not found"));
+        
+        proposal.creator.require_auth();
+        proposal.active = false;
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+    }}
+}}
+
+#[cfg(test)]
+mod test {{
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    #[test]
+    fn test_voting_lifecycle() {{
+        let env = Env::default();
+        let contract_id = env.register_contract(None, {pascal});
+        let client = {pascal}Client::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+        
+        env.mock_all_auths();
+        
+        let proposal_id = client.create_proposal(&creator, &String::from_str(&env, "Proposal 1"));
+        assert_eq!(proposal_id, 1);
+        
+        client.vote(&voter1, &proposal_id, &true);
+        client.vote(&voter2, &proposal_id, &false);
+        
+        let (yes, no) = client.results(&proposal_id);
+        assert_eq!(yes, 1);
+        assert_eq!(no, 1);
+        
+        client.close_proposal(&proposal_id);
     }}
 }}
 "#, pascal = pascal)
@@ -405,28 +566,111 @@ impl {pascal} {{
 fn nft_template(name: &str) -> String {
     let pascal = to_pascal(name);
     format!(r#"#![no_std]
-use soroban_sdk::{{contract, contractimpl, Address, Env, String}};
+use soroban_sdk::{{contract, contractimpl, contracttype, Address, Env, String}};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct NFTMetadata {{
+    pub owner: Address,
+    pub uri: String,
+}}
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {{
+    Admin,
+    Token(u64),
+    TotalSupply,
+}}
 
 #[contract]
 pub struct {pascal};
 
 #[contractimpl]
 impl {pascal} {{
-    pub fn mint(env: Env, to: Address, token_id: u64, uri: String) {{
-        // TODO: mint NFT and store metadata
-        let _ = (to, token_id, uri);
+    pub fn initialize(env: Env, admin: Address) {{
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::TotalSupply, &0u64);
     }}
 
-    pub fn owner_of(_env: Env, token_id: u64) -> Address {{
-        // TODO: return owner from storage
-        let _ = token_id;
-        panic!("not implemented")
+    pub fn mint(env: Env, to: Address, token_id: u64, uri: String) {{
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        
+        if env.storage().persistent().has(&DataKey::Token(token_id)) {{
+            panic!("token already exists");
+        }}
+        
+        let metadata = NFTMetadata {{ owner: to, uri }};
+        env.storage().persistent().set(&DataKey::Token(token_id), &metadata);
+        
+        let total: u64 = env.storage().instance().get(&DataKey::TotalSupply).unwrap();
+        env.storage().instance().set(&DataKey::TotalSupply, &(total + 1));
+    }}
+
+    pub fn owner_of(env: Env, token_id: u64) -> Address {{
+        let metadata: NFTMetadata = env.storage().persistent()
+            .get(&DataKey::Token(token_id))
+            .unwrap_or_else(|| panic!("token not found"));
+        metadata.owner
     }}
 
     pub fn transfer(env: Env, from: Address, to: Address, token_id: u64) {{
         from.require_auth();
-        // TODO: transfer ownership
-        let _ = (to, token_id);
+        
+        let mut metadata: NFTMetadata = env.storage().persistent()
+            .get(&DataKey::Token(token_id))
+            .unwrap_or_else(|| panic!("token not found"));
+        
+        if metadata.owner != from {{
+            panic!("not token owner");
+        }}
+        
+        metadata.owner = to;
+        env.storage().persistent().set(&DataKey::Token(token_id), &metadata);
+    }}
+
+    pub fn token_uri(env: Env, token_id: u64) -> String {{
+        let metadata: NFTMetadata = env.storage().persistent()
+            .get(&DataKey::Token(token_id))
+            .unwrap_or_else(|| panic!("token not found"));
+        metadata.uri
+    }}
+
+    pub fn total_supply(env: Env) -> u64 {{
+        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+    }}
+}}
+
+#[cfg(test)]
+mod test {{
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    #[test]
+    fn test_nft_lifecycle() {{
+        let env = Env::default();
+        let contract_id = env.register_contract(None, {pascal});
+        let client = {pascal}Client::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        
+        env.mock_all_auths();
+        
+        client.initialize(&admin);
+        
+        client.mint(&user1, &1, &String::from_str(&env, "ipfs://token1"));
+        assert_eq!(client.owner_of(&1), user1);
+        assert_eq!(client.total_supply(), 1);
+        
+        client.transfer(&user1, &user2, &1);
+        assert_eq!(client.owner_of(&1), user2);
+        
+        let uri = client.token_uri(&1);
+        assert_eq!(uri, String::from_str(&env, "ipfs://token1"));
     }}
 }}
 "#, pascal = pascal)

@@ -1,0 +1,183 @@
+use crate::utils::{config, print as p, soroban};
+use anyhow::Result;
+use clap::Args;
+use colored::*;
+
+#[derive(Args)]
+pub struct InvokeArgs {
+    /// Contract ID to invoke
+    #[arg(long)]
+    contract_id: String,
+
+    /// Function name to call
+    #[arg(long)]
+    function: String,
+
+    /// Function arguments (comma-separated)
+    #[arg(long)]
+    args: Option<String>,
+
+    /// Argument types (comma-separated: string, symbol, int, bool, address)
+    #[arg(long)]
+    arg_types: Option<String>,
+
+    /// Wallet to use for signing
+    #[arg(long)]
+    wallet: String,
+
+    /// Network to use (overrides config)
+    #[arg(long)]
+    network: Option<String>,
+
+    /// Simulate only (don't submit transaction)
+    #[arg(long)]
+    simulate: bool,
+}
+
+pub fn handle(args: InvokeArgs) -> Result<()> {
+    let cfg = config::load()?;
+    let network = args.network.as_ref().unwrap_or(&cfg.network);
+
+    // Validate contract ID
+    config::validate_contract_id(&args.contract_id)?;
+
+    // Find wallet
+    let wallet = cfg
+        .wallets
+        .iter()
+        .find(|w| w.name == args.wallet)
+        .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", args.wallet))?;
+
+    // Parse arguments
+    let arg_list = parse_args(&args.args)?;
+    let arg_type_list = parse_arg_types(&args.arg_types)?;
+
+    if arg_list.len() != arg_type_list.len() {
+        anyhow::bail!(
+            "Argument count mismatch: {} args but {} types",
+            arg_list.len(),
+            arg_type_list.len()
+        );
+    }
+
+    p::header(&format!(
+        "Invoking contract function: {}::{}",
+        args.contract_id, args.function
+    ));
+    p::separator();
+    p::kv("Contract ID", &args.contract_id);
+    p::kv("Function", &args.function);
+    p::kv("Network", network);
+    p::kv("Wallet", &args.wallet);
+
+    if !arg_list.is_empty() {
+        println!();
+        p::info("Arguments:");
+        for (i, (arg, arg_type)) in arg_list.iter().zip(arg_type_list.iter()).enumerate() {
+            p::kv(&format!("  [{}] {}", i, arg_type), arg);
+        }
+    }
+
+    println!();
+
+    if args.simulate {
+        p::step(1, 1, "Simulating transaction...");
+        let result = soroban::simulate_transaction(
+            &args.contract_id,
+            &args.function,
+            &arg_list,
+            &arg_type_list,
+            network,
+        )?;
+
+        println!();
+        p::success("Simulation successful!");
+        p::separator();
+        p::kv_accent("Return Value", &result.return_value);
+        p::kv("Estimated Fee", &format!("{} stroops", result.fee));
+
+        if !result.events.is_empty() {
+            println!();
+            p::info(&format!("Events ({})", result.events.len()));
+            for (i, event) in result.events.iter().enumerate() {
+                p::kv(&format!("  [{}]", i), event);
+            }
+        }
+    } else {
+        p::step(1, 2, "Building and signing transaction...");
+        p::step(2, 2, "Submitting to network...");
+
+        let result = soroban::submit_transaction(
+            &args.contract_id,
+            &args.function,
+            &arg_list,
+            &arg_type_list,
+            network,
+            wallet,
+        )?;
+
+        println!();
+        p::success("Transaction submitted successfully!");
+        p::separator();
+        p::kv_accent("Transaction Hash", &result.hash);
+        p::kv_accent("Return Value", &result.return_value);
+        println!();
+        p::info(&format!(
+            "View on Stellar Expert: https://stellar.expert/explorer/{}/tx/{}",
+            network, result.hash
+        ));
+    }
+
+    Ok(())
+}
+
+fn parse_args(args: &Option<String>) -> Result<Vec<String>> {
+    match args {
+        Some(s) if !s.is_empty() => Ok(s.split(',').map(|a| a.trim().to_string()).collect()),
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn parse_arg_types(arg_types: &Option<String>) -> Result<Vec<String>> {
+    match arg_types {
+        Some(s) if !s.is_empty() => {
+            let types: Vec<String> = s.split(',').map(|t| t.trim().to_string()).collect();
+            for t in &types {
+                if !matches!(t.as_str(), "string" | "symbol" | "int" | "bool" | "address") {
+                    anyhow::bail!("Invalid argument type '{}'. Supported: string, symbol, int, bool, address", t);
+                }
+            }
+            Ok(types)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_args() {
+        assert_eq!(parse_args(&None).unwrap(), Vec::<String>::new());
+        assert_eq!(parse_args(&Some("".to_string())).unwrap(), Vec::<String>::new());
+        assert_eq!(
+            parse_args(&Some("arg1,arg2,arg3".to_string())).unwrap(),
+            vec!["arg1", "arg2", "arg3"]
+        );
+        assert_eq!(
+            parse_args(&Some("arg1, arg2 , arg3".to_string())).unwrap(),
+            vec!["arg1", "arg2", "arg3"]
+        );
+    }
+
+    #[test]
+    fn test_parse_arg_types() {
+        assert_eq!(parse_arg_types(&None).unwrap(), Vec::<String>::new());
+        assert_eq!(
+            parse_arg_types(&Some("string,int,bool".to_string())).unwrap(),
+            vec!["string", "int", "bool"]
+        );
+        assert!(parse_arg_types(&Some("invalid_type".to_string())).is_err());
+    }
+}
