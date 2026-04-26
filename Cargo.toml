@@ -31,6 +31,7 @@ stellar-strkey = "=0.0.9"
 stellar-xdr = { version = "22.0.0", features = ["serde"] }
 base64     = "0.21"
 urlencoding = "2.1"
+indicatif = "0.17.7"
 
 [profile.release]
 opt-level = 3

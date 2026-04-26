@@ -85,27 +85,40 @@ pub fn handle(args: DeployArgs) -> Result<()> {
     }
 
     println!();
-    p::step(1, 3, "Verifying account on-chain…");
+    println!();
+    let pb = p::progress_bar(3, "Starting deployment steps...");
+
+    pb.set_message("Verifying account on-chain...");
     let account = horizon::fetch_account(&wallet.public_key, &args.network)
-        .map_err(|e| anyhow::anyhow!(
-            "Account not active on {}: {}\nFund it with: starforge wallet fund {}",
-            args.network, e, wallet.name
-        ))?;
+        .map_err(|e| {
+            pb.abandon();
+            anyhow::anyhow!(
+                "Account not active on {}: {}\nFund it with: starforge wallet fund {}",
+                args.network, e, wallet.name
+            )
+        })?;
 
     let xlm = account.balances.iter()
         .find(|b| b.asset_type == "native")
         .map(|b| b.balance.as_str())
         .unwrap_or("0");
-    p::kv_accent("XLM Balance", &format!("{} XLM", xlm));
+    
+    pb.inc(1);
+    pb.set_message("Calculating WASM hash...");
 
-    p::step(2, 3, "Calculating WASM hash…");
     let hash_val = wasm_bytes.iter()
         .enumerate()
         .fold(0u64, |acc, (i, &b)| acc.wrapping_add((b as u64).wrapping_mul(i as u64 + 1)));
     let wasm_hash = format!("{:016x}", hash_val);
-    p::kv("WASM hash (local)", &wasm_hash);
+    
+    pb.inc(1);
+    pb.set_message("Generating stellar CLI command...");
 
-    p::step(3, 3, "Generating stellar CLI command…");
+    pb.finish_with_message("Deployment preparation complete!");
+
+    println!();
+    p::kv_accent("XLM Balance", &format!("{} XLM", xlm));
+    p::kv("WASM hash (local)", &wasm_hash);
 
     println!();
     p::separator();
